@@ -28,29 +28,57 @@ class PyMuPDFParser(BaseParser):
             
             for page_num in range(len(doc)):
                 page = doc[page_num]
-                text += page.get_text() + "\n"
                 
-                # Extract tables (basic detection)
+                # Extract text - handle potential encoding issues
+                try:
+                    page_text = page.get_text()
+                    text += page_text + "\n"
+                except Exception as e:
+                    print(f"Warning: Text extraction failed for page {page_num + 1}: {e}")
+                    text += f"[Text extraction failed for page {page_num + 1}]\n"
+                
+                # Extract tables with improved error handling
                 try:
                     page_tables = page.find_tables()
-                    for table in page_tables:
-                        table_data = table.extract()
-                        tables.append({
-                            'page': page_num + 1,
-                            'data': table_data
-                        })
-                except:
-                    pass  # Table extraction might not be available in all versions
+                    if page_tables:
+                        for table_idx, table in enumerate(page_tables):
+                            try:
+                                table_data = table.extract()
+                                if table_data:  # Only add if we got actual data
+                                    tables.append({
+                                        'page': page_num + 1,
+                                        'table_index': table_idx,
+                                        'data': table_data,
+                                        'rows': len(table_data),
+                                        'columns': len(table_data[0]) if table_data else 0
+                                    })
+                            except Exception as e:
+                                print(f"Warning: Table extraction failed on page {page_num + 1}, table {table_idx}: {e}")
+                except Exception as e:
+                    print(f"Warning: Table detection failed for page {page_num + 1}: {e}")
                 
-                # Extract image information
-                image_list = page.get_images()
-                for img_index, img in enumerate(image_list):
-                    images.append({
-                        'page': page_num + 1,
-                        'index': img_index,
-                        'width': img[2],
-                        'height': img[3]
-                    })
+                # Extract image information with safer indexing
+                try:
+                    image_list = page.get_images()
+                    for img_index, img in enumerate(image_list):
+                        try:
+                            # Safely extract image info with bounds checking
+                            img_info = {
+                                'page': page_num + 1,
+                                'index': img_index,
+                                'xref': img[0] if len(img) > 0 else None,
+                            }
+                            # Add dimensions if available
+                            if len(img) > 2:
+                                img_info['width'] = img[2]
+                            if len(img) > 3:
+                                img_info['height'] = img[3]
+                            
+                            images.append(img_info)
+                        except Exception as e:
+                            print(f"Warning: Image info extraction failed on page {page_num + 1}, image {img_index}: {e}")
+                except Exception as e:
+                    print(f"Warning: Image detection failed for page {page_num + 1}: {e}")
             
             # Extract metadata
             metadata = {
@@ -86,9 +114,15 @@ class PyMuPDFParser(BaseParser):
             return result.to_dict()
             
         except Exception as e:
+            error_msg = f"PyMuPDF parsing failed: {str(e)}"
+            print(f"Error in PyMuPDF parser: {error_msg}")
             return {
                 'text': '',
-                'metadata': {'error': str(e), 'file_name': file_path.name},
+                'metadata': {
+                    'error': error_msg, 
+                    'file_name': file_path.name if file_path else 'unknown',
+                    'parser': 'PyMuPDF'
+                },
                 'tables': [],
                 'images': [],
                 'parser_name': self.name,
