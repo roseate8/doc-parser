@@ -106,46 +106,9 @@ class OutputConverter:
     
     @staticmethod
     def to_markdown(data: Dict[str, Any]) -> str:
-        """Convert parsed data to Markdown format."""
-        # Main content first - this is what the user wants to see
-        text_content = data.get('text', 'No text extracted')
-        
-        md_content = f"""# {data.get('metadata', {}).get('file_name', 'Parsed Document')}
-
-{text_content}
-
-"""
-        
-        # Add tables if any
-        tables = data.get('tables', [])
-        if tables:
-            md_content += "## Tables\\n\\n"
-            for i, table in enumerate(tables):
-                md_content += f"### Table {i + 1}\\n\\n"
-                
-                table_data = table.get('data', [])
-                if table_data and len(table_data) > 0:
-                    # Create markdown table
-                    header = table_data[0]
-                    md_content += "| " + " | ".join(str(cell or '') for cell in header) + " |\\n"
-                    md_content += "|" + "---|" * len(header) + "\\n"
-                    
-                    for row in table_data[1:]:
-                        md_content += "| " + " | ".join(str(cell or '') for cell in row) + " |\\n"
-                    
-                md_content += "\\n"
-        
-        # Add images if any
-        images = data.get('images', [])
-        if images:
-            md_content += "## Images\\n\\n"
-            for i, img in enumerate(images):
-                md_content += f"### Image {i + 1}\\n\\n"
-                for key, value in img.items():
-                    md_content += f"- **{key}:** {value}\\n"
-                md_content += "\\n"
-        
-        return md_content
+        """Convert parsed data to Markdown format - PURE CONTENT ONLY."""
+        # Return only the raw text content, no metadata, headers, or extra formatting
+        return data.get('text', '')
     
     @staticmethod
     def to_json(data: Dict[str, Any]) -> str:
