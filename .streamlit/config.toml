@@ -1,0 +1,16 @@
+[server]
+# Disable the file watcher to prevent constant reloading
+fileWatcherType = "none"
+# Set max upload size to 200MB
+maxUploadSize = 200
+
+[browser]
+# Don't automatically open browser (optional)
+gatherUsageStats = false
+
+[theme]
+# Optional: Set a nice theme
+primaryColor = "#FF6B6B"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0F2F6"
+textColor = "#262730"
