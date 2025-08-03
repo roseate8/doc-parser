@@ -389,6 +389,18 @@ def main():
                         confidence,
                         help="How confident we are in the parsing results"
                     )
+                    with st.expander("🎯 What does Confidence Level mean?"):
+                        st.write("""
+                        **Confidence Level** indicates how reliable the parsing results are:
+                        
+                        - **Very High (≥80%)**: Excellent quality, very reliable for all use cases
+                        - **High (65-79%)**: Good quality, suitable for most applications  
+                        - **Medium (50-64%)**: Acceptable quality, may need review for critical use
+                        - **Low (30-49%)**: Poor quality, manual review recommended
+                        - **Very Low (<30%)**: Very poor quality, likely needs different parser or preprocessing
+                        
+                        Higher confidence means you can trust the extracted content more.
+                        """)
                 
                 with col_q3:
                     grade = quality_data.get('quality_grade', 'N/A')
@@ -397,6 +409,21 @@ def main():
                         grade,
                         help="Letter grade representation of quality"
                     )
+                    with st.expander("🎓 Quality Grade Scale"):
+                        st.write("""
+                        **Quality Grades** translate scores to familiar letter grades:
+                        
+                        - **A+ (≥90%)**: Outstanding quality - professional grade
+                        - **A (80-89%)**: Excellent quality - very good for most uses
+                        - **B+ (70-79%)**: Good quality - suitable for many applications
+                        - **B (60-69%)**: Acceptable quality - usable with minor issues
+                        - **C+ (50-59%)**: Fair quality - may need review or cleanup
+                        - **C (40-49%)**: Poor quality - significant issues present
+                        - **D (30-39%)**: Very poor quality - major problems
+                        - **F (<30%)**: Failed - output likely unusable as-is
+                        
+                        Aim for B+ or higher for production use.
+                        """)
                 
                 # Quality Metrics Breakdown
                 st.subheader("🔍 Detailed Metrics")
@@ -411,8 +438,40 @@ def main():
                     noise = metrics.get('noise_level', 0)
                     
                     st.progress(completeness, text=f"Completeness: {completeness:.1%}")
+                    with st.expander("ℹ️ What is Completeness?"):
+                        st.write("""
+                        **Completeness Score** measures how complete the text extraction appears to be:
+                        - **Text Length**: Longer documents generally indicate better extraction
+                        - **Sentence Structure**: Presence of complete, well-formed sentences
+                        - **Truncation Detection**: Checks for signs of incomplete extraction
+                        - **Content Indicators**: Evaluates paragraph structure and text flow
+                        
+                        **Higher scores** indicate more complete text extraction with fewer missing parts.
+                        """)
+                    
                     st.progress(semantic, text=f"Semantic Quality: {semantic:.1%}")
+                    with st.expander("ℹ️ What is Semantic Quality?"):
+                        st.write("""
+                        **Semantic Quality** evaluates the coherence and meaning of extracted text:
+                        - **Vocabulary Diversity**: Variety of words used (not repetitive)
+                        - **Sentence Structure**: Proper sentence length and capitalization
+                        - **Coherence Indicators**: Presence of connecting words and logical flow
+                        - **Language Quality**: Overall readability and linguistic structure
+                        
+                        **Higher scores** indicate more coherent, readable, and meaningful text.
+                        """)
+                    
                     st.progress(1-noise, text=f"Noise Reduction: {(1-noise):.1%}")
+                    with st.expander("ℹ️ What is Noise Reduction?"):
+                        st.write("""
+                        **Noise Reduction** measures how clean the extracted text is (1 - noise level):
+                        - **Special Characters**: Excessive symbols or formatting artifacts
+                        - **OCR Errors**: Repeated characters or garbled text patterns
+                        - **Gibberish Detection**: Random character sequences or corrupted text
+                        - **Text Fragmentation**: Broken words or excessive single characters
+                        
+                        **Higher scores** indicate cleaner text with fewer extraction errors.
+                        """)
                 
                 with col_m2:
                     st.write("**Structure Quality:**")
@@ -420,7 +479,66 @@ def main():
                     structure = metrics.get('content_structure', 0)
                     
                     st.progress(format_pres, text=f"Format Preservation: {format_pres:.1%}")
+                    with st.expander("ℹ️ What is Format Preservation?"):
+                        st.write("""
+                        **Format Preservation** evaluates how well original formatting is maintained:
+                        - **Line Breaks**: Proper preservation of line endings and spacing
+                        - **Paragraph Structure**: Maintained paragraph separation
+                        - **Table Detection**: Recognition and extraction of tabular data
+                        - **List Recognition**: Identification of bullet points and numbered lists
+                        
+                        **Higher scores** indicate better preservation of document structure and layout.
+                        """)
+                    
                     st.progress(structure, text=f"Content Structure: {structure:.1%}")
+                    with st.expander("ℹ️ What is Content Structure?"):
+                        st.write("""
+                        **Content Structure** measures logical organization and flow:
+                        - **Heading Detection**: Identification of titles and section headers
+                        - **Content Balance**: Reasonable distribution of text across sections
+                        - **Flow Indicators**: Presence of organizational words and transitions
+                        - **Punctuation**: Proper sentence endings and text organization
+                        
+                        **Higher scores** indicate well-organized, logically structured content.
+                        """)
+                
+                # Overall Quality Formula Explanation
+                st.subheader("📊 Quality Formula")
+                with st.expander("🧮 How is Overall Quality Calculated?"):
+                    st.write("""
+                    The **Overall Quality Score** is calculated using a weighted formula:
+                    
+                    ```
+                    Quality = 0.25 × Completeness 
+                            + 0.20 × Semantic Quality
+                            + 0.20 × Noise Reduction
+                            + 0.15 × Format Preservation  
+                            + 0.20 × Content Structure
+                    ```
+                    
+                    **Weight Distribution:**
+                    - **Completeness (25%)**: Most important - did we extract all the content?
+                    - **Semantic Quality (20%)**: Is the text meaningful and coherent?
+                    - **Noise Reduction (20%)**: Is the text clean without extraction errors?
+                    - **Content Structure (20%)**: Is the logical organization preserved?
+                    - **Format Preservation (15%)**: Are visual elements maintained?
+                    
+                    **Result Range:** 0.0 to 1.0 (displayed as percentage)
+                    """)
+                    
+                    # Show current calculation
+                    if metrics:
+                        calc_text = f"""
+                        **Current Calculation:**
+                        - 0.25 × {completeness:.3f} = {0.25 * completeness:.3f}
+                        - 0.20 × {semantic:.3f} = {0.20 * semantic:.3f}
+                        - 0.20 × {(1-noise):.3f} = {0.20 * (1-noise):.3f}
+                        - 0.15 × {format_pres:.3f} = {0.15 * format_pres:.3f}
+                        - 0.20 × {structure:.3f} = {0.20 * structure:.3f}
+                        
+                        **Total: {overall_quality:.3f} ({overall_quality:.1%})**
+                        """
+                        st.code(calc_text)
                 
                 # Text Statistics
                 st.subheader("📈 Content Statistics")
@@ -441,8 +559,21 @@ def main():
                 recommendations = quality_data.get('recommendations', [])
                 if recommendations:
                     st.subheader("💡 Recommendations")
-                    for i, rec in enumerate(recommendations, 1):
-                        st.write(f"{i}. {rec}")
+                    with st.expander("📋 View Detailed Recommendations", expanded=True):
+                        st.write("Based on the quality analysis, here are actionable suggestions:")
+                        for i, rec in enumerate(recommendations, 1):
+                            st.write(f"**{i}.** {rec}")
+                        
+                        # Add general guidance
+                        st.write("---")
+                        st.write("**General Parser Guidance:**")
+                        st.write("- **PyPDF**: Fast but basic - good for simple text extraction")
+                        st.write("- **PyMuPDF**: Balanced performance - handles most documents well")  
+                        st.write("- **pdfplumber**: Excellent for tables and detailed formatting")
+                        st.write("- **LlamaParse**: AI-powered - best for complex layouts and multi-format documents")
+                        st.write("- **PDFMiner**: Low-level control - good for specific extraction needs")
+                        st.write("- **tabula**: Specialized for table extraction from PDFs")
+                        st.write("- **PDFQuery**: jQuery-like queries - good for structured data extraction")
                 
                 # Quality Assessment Download
                 try:
