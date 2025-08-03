@@ -10,6 +10,19 @@ from datetime import datetime
 from parsers.parser_manager import ParserManager
 from converters.output_converter import OutputConverter
 from file_manager import FileManager
+try:
+    from hierarchy_analyzer import HierarchyAnalyzer
+    HIERARCHY_ANALYSIS_AVAILABLE = True
+except ImportError:
+    HIERARCHY_ANALYSIS_AVAILABLE = False
+    print("⚠️ Hierarchy analysis not available. Install requirements: pip install -r requirements_hierarchy.txt")
+
+try:
+    from ocr_analyzer import OCRAnalyzer
+    OCR_ANALYSIS_AVAILABLE = True
+except ImportError:
+    OCR_ANALYSIS_AVAILABLE = False
+    print("⚠️ OCR analysis not available. Install requirements: pip install -r requirements_ocr.txt")
 
 
 # Set default LlamaParse API key if not already set
@@ -247,8 +260,24 @@ def main():
     if 'parsed_data' in st.session_state:
         st.header("📊 Parsing Results")
         
-        # Tabs for different views
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📄 HTML", "📝 Markdown", "📋 JSON", "🗂️ XML", "ℹ️ Metadata", "📊 Quality"])
+                # Tabs for different views
+        available_tabs = ["📄 HTML", "📝 Markdown", "📋 JSON", "🗂️ XML", "ℹ️ Metadata"]
+        if HIERARCHY_ANALYSIS_AVAILABLE:
+            available_tabs.append("🏗️ Hierarchy")
+        if OCR_ANALYSIS_AVAILABLE:
+            available_tabs.append("👁️ OCR Analysis")
+        
+        tabs = st.tabs(available_tabs)
+        tab1, tab2, tab3, tab4, tab5 = tabs[:5]
+        
+        # Handle optional tabs
+        tab_hierarchy = tabs[5] if len(tabs) > 5 and HIERARCHY_ANALYSIS_AVAILABLE else None
+        if HIERARCHY_ANALYSIS_AVAILABLE and OCR_ANALYSIS_AVAILABLE:
+            tab_ocr = tabs[6] if len(tabs) > 6 else None
+        elif OCR_ANALYSIS_AVAILABLE and not HIERARCHY_ANALYSIS_AVAILABLE:
+            tab_ocr = tabs[5] if len(tabs) > 5 else None
+        else:
+            tab_ocr = None
         
         parsed_data = st.session_state.parsed_data
         
@@ -364,229 +393,460 @@ def main():
                     disabled=True
                 )
         
-        with tab6:
-            st.subheader("📊 Quality Assessment")
-            quality_data = parsed_data.get('quality_assessment', {})
-            
-            if 'error' in quality_data:
-                st.error(f"❌ Quality assessment failed: {quality_data['error']}")
-            else:
-                # Overall Quality Score
-                col_q1, col_q2, col_q3 = st.columns(3)
+        # Hierarchy Analysis Tab (if available)
+        if HIERARCHY_ANALYSIS_AVAILABLE and tab_hierarchy is not None:
+            with tab_hierarchy:
+                st.subheader("🏗️ Document Hierarchy Analysis")
+                st.write("Analyze if extracted hierarchy (headings, lists) matches visual document structure using LayoutParser.")
                 
-                with col_q1:
-                    overall_quality = quality_data.get('overall_quality', 0)
-                    st.metric(
-                        "Overall Quality", 
-                        f"{overall_quality:.1%}",
-                        help="Composite quality score based on multiple factors"
-                    )
+                if st.button("🔍 Analyze Document Hierarchy", type="primary"):
+                    with st.spinner("Analyzing document hierarchy..."):
+                        try:
+                            # Initialize hierarchy analyzer
+                            analyzer = HierarchyAnalyzer()
+                            
+                            # Get file path and extracted text
+                            file_manager = get_file_manager()
+                            selected_file = st.session_state.get('selected_file', '')
+                            
+                            if selected_file:
+                                file_path = file_manager.get_file_path(selected_file)
+                                
+                                # Extract text from parsed data (check multiple possible structures)
+                                extracted_text = ""
+                                if 'content' in parsed_data:
+                                    if isinstance(parsed_data['content'], dict):
+                                        extracted_text = parsed_data['content'].get('text', '') or parsed_data['content'].get('html', '') or str(parsed_data['content'])
+                                    else:
+                                        extracted_text = str(parsed_data['content'])
+                                elif 'text' in parsed_data:
+                                    extracted_text = parsed_data['text']
+                                elif 'html' in parsed_data:
+                                    # Strip HTML tags for hierarchy analysis
+                                    import re
+                                    extracted_text = re.sub('<[^<]+?>', '', parsed_data['html'])
+                                else:
+                                    # Fallback - convert entire parsed data to string
+                                    extracted_text = str(parsed_data)
+                                
+                                # Ensure we have meaningful text
+                                if len(extracted_text.strip()) < 10:
+                                    extracted_text = ""
+                            
+                            # Debug information
+                            st.write("**Debug Info:**")
+                            st.write(f"• Selected file: {selected_file}")
+                            st.write(f"• File path exists: {file_path.exists() if selected_file else 'No file selected'}")
+                            st.write(f"• Extracted text length: {len(extracted_text)} characters")
+                            st.write(f"• Parsed data keys: {list(parsed_data.keys())}")
+                            
+                            if selected_file and file_path.exists() and extracted_text:
+                                # Perform hierarchy analysis
+                                analysis_result = analyzer.analyze_document_hierarchy(
+                                    file_path, 
+                                    extracted_text
+                                )
+                                
+                                # Display results
+                                st.success("✅ Hierarchy analysis completed!")
+                                
+                                # Overall Assessment
+                                overall = analysis_result.get('overall_assessment', {})
+                                col1, col2, col3 = st.columns(3)
+                                
+                                with col1:
+                                    quality = overall.get('hierarchy_quality', 'unknown').replace('_', ' ').title()
+                                    st.metric("Hierarchy Quality", quality)
+                                
+                                with col2:
+                                    preservation = overall.get('structure_preservation', 0)
+                                    st.metric("Structure Preservation", f"{preservation:.1%}")
+                                
+                                with col3:
+                                    suitability = overall.get('parser_suitability', 'unknown').replace('_', ' ').title()
+                                    st.metric("Parser Suitability", suitability)
+                                
+                                # Text Hierarchy Analysis
+                                st.subheader("📝 Extracted Text Hierarchy")
+                                text_hierarchy = analysis_result.get('text_hierarchy', {})
+                                patterns = text_hierarchy.get('patterns', {})
+                                
+                                col1, col2, col3, col4 = st.columns(4)
+                                with col1:
+                                    st.metric("Headings", patterns.get('heading_count', 0))
+                                with col2:
+                                    st.metric("Lists", patterns.get('list_count', 0))
+                                with col3:
+                                    st.metric("Paragraphs", patterns.get('paragraph_count', 0))
+                                with col4:
+                                    ratio = patterns.get('text_structure_ratio', 0)
+                                    st.metric("Structure Ratio", f"{ratio:.2f}")
+                                
+                                # Visual Hierarchy (if available)
+                                visual_hierarchy = analysis_result.get('visual_hierarchy', {})
+                                if 'error' not in visual_hierarchy and 'info' not in visual_hierarchy:
+                                    st.subheader("🖼️ Visual Layout Analysis")
+                                    
+                                    col1, col2, col3, col4 = st.columns(4)
+                                    with col1:
+                                        st.metric("Visual Titles", len(visual_hierarchy.get('titles', [])))
+                                    with col2:
+                                        st.metric("Visual Lists", len(visual_hierarchy.get('lists', [])))
+                                    with col3:
+                                        st.metric("Tables", len(visual_hierarchy.get('tables', [])))
+                                    with col4:
+                                        st.metric("Figures", len(visual_hierarchy.get('figures', [])))
+                                
+                                # Comparison Results
+                                comparison = analysis_result.get('comparison', {})
+                                if 'match_score' in comparison:
+                                    st.subheader("⚖️ Hierarchy Comparison")
+                                    
+                                    match_score = comparison.get('match_score', 0)
+                                    st.progress(match_score, text=f"Overall Match Score: {match_score:.1%}")
+                                    
+                                    # Insights
+                                    insights = comparison.get('insights', [])
+                                    if insights:
+                                        st.write("**Insights:**")
+                                        for insight in insights:
+                                            st.write(f"• {insight}")
+                                    
+                                    # Discrepancies
+                                    discrepancies = comparison.get('discrepancies', [])
+                                    if discrepancies:
+                                        st.write("**Discrepancies Found:**")
+                                        for discrepancy in discrepancies:
+                                            st.warning(discrepancy)
+                                    
+                                    # Recommendations
+                                    recommendations = comparison.get('recommendations', [])
+                                    if recommendations:
+                                        st.write("**Recommendations:**")
+                                        for rec in recommendations:
+                                            st.info(f"💡 {rec}")
+                                
+                                # Summary
+                                summary = overall.get('summary', [])
+                                if summary:
+                                    with st.expander("📋 Analysis Summary", expanded=True):
+                                        for item in summary:
+                                            st.write(f"• {item}")
+                                
+                                # Download analysis results
+                                try:
+                                    import json
+                                    analysis_json = json.dumps(analysis_result, indent=2, default=str)
+                                    st.download_button(
+                                        "💾 Download Hierarchy Analysis (JSON)",
+                                        data=analysis_json,
+                                        file_name=f"{st.session_state.selected_file}_hierarchy_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                                        mime="application/json"
+                                    )
+                                except Exception as e:
+                                    st.error(f"❌ Failed to generate analysis report: {str(e)}")
+                            
+                            else:
+                                if not selected_file:
+                                    st.error("❌ No file selected. Please parse a document first.")
+                                elif not file_path.exists():
+                                    st.error(f"❌ File not found: {file_path}")
+                                elif not extracted_text:
+                                    st.error("❌ No text content extracted. The document might be empty or parsing failed.")
+                                    st.write("**Available data structure:**")
+                                    st.json(parsed_data)
+                        
+                        except Exception as e:
+                            st.error(f"❌ Hierarchy analysis failed: {str(e)}")
+                            st.write("This might be due to missing dependencies. Try installing:")
+                            st.code("pip install -r requirements_hierarchy.txt")
                 
-                with col_q2:
-                    confidence = quality_data.get('confidence_level', 'Unknown')
-                    st.metric(
-                        "Confidence Level", 
-                        confidence,
-                        help="How confident we are in the parsing results"
-                    )
-                    with st.expander("🎯 What does Confidence Level mean?"):
-                        st.write("""
-                        **Confidence Level** indicates how reliable the parsing results are:
-                        
-                        - **Very High (≥80%)**: Excellent quality, very reliable for all use cases
-                        - **High (65-79%)**: Good quality, suitable for most applications  
-                        - **Medium (50-64%)**: Acceptable quality, may need review for critical use
-                        - **Low (30-49%)**: Poor quality, manual review recommended
-                        - **Very Low (<30%)**: Very poor quality, likely needs different parser or preprocessing
-                        
-                        Higher confidence means you can trust the extracted content more.
-                        """)
-                
-                with col_q3:
-                    grade = quality_data.get('quality_grade', 'N/A')
-                    st.metric(
-                        "Quality Grade", 
-                        grade,
-                        help="Letter grade representation of quality"
-                    )
-                    with st.expander("🎓 Quality Grade Scale"):
-                        st.write("""
-                        **Quality Grades** translate scores to familiar letter grades:
-                        
-                        - **A+ (≥90%)**: Outstanding quality - professional grade
-                        - **A (80-89%)**: Excellent quality - very good for most uses
-                        - **B+ (70-79%)**: Good quality - suitable for many applications
-                        - **B (60-69%)**: Acceptable quality - usable with minor issues
-                        - **C+ (50-59%)**: Fair quality - may need review or cleanup
-                        - **C (40-49%)**: Poor quality - significant issues present
-                        - **D (30-39%)**: Very poor quality - major problems
-                        - **F (<30%)**: Failed - output likely unusable as-is
-                        
-                        Aim for B+ or higher for production use.
-                        """)
-                
-                # Quality Metrics Breakdown
-                st.subheader("🔍 Detailed Metrics")
-                metrics = quality_data.get('metrics', {})
-                
-                col_m1, col_m2 = st.columns(2)
-                
-                with col_m1:
-                    st.write("**Content Quality:**")
-                    completeness = metrics.get('completeness_score', 0)
-                    semantic = metrics.get('semantic_quality', 0)
-                    noise = metrics.get('noise_level', 0)
-                    
-                    st.progress(completeness, text=f"Completeness: {completeness:.1%}")
-                    with st.expander("ℹ️ What is Completeness?"):
-                        st.write("""
-                        **Completeness Score** measures how complete the text extraction appears to be:
-                        - **Text Length**: Longer documents generally indicate better extraction
-                        - **Sentence Structure**: Presence of complete, well-formed sentences
-                        - **Truncation Detection**: Checks for signs of incomplete extraction
-                        - **Content Indicators**: Evaluates paragraph structure and text flow
-                        
-                        **Higher scores** indicate more complete text extraction with fewer missing parts.
-                        """)
-                    
-                    st.progress(semantic, text=f"Semantic Quality: {semantic:.1%}")
-                    with st.expander("ℹ️ What is Semantic Quality?"):
-                        st.write("""
-                        **Semantic Quality** evaluates the coherence and meaning of extracted text:
-                        - **Vocabulary Diversity**: Variety of words used (not repetitive)
-                        - **Sentence Structure**: Proper sentence length and capitalization
-                        - **Coherence Indicators**: Presence of connecting words and logical flow
-                        - **Language Quality**: Overall readability and linguistic structure
-                        
-                        **Higher scores** indicate more coherent, readable, and meaningful text.
-                        """)
-                    
-                    st.progress(1-noise, text=f"Noise Reduction: {(1-noise):.1%}")
-                    with st.expander("ℹ️ What is Noise Reduction?"):
-                        st.write("""
-                        **Noise Reduction** measures how clean the extracted text is (1 - noise level):
-                        - **Special Characters**: Excessive symbols or formatting artifacts
-                        - **OCR Errors**: Repeated characters or garbled text patterns
-                        - **Gibberish Detection**: Random character sequences or corrupted text
-                        - **Text Fragmentation**: Broken words or excessive single characters
-                        
-                        **Higher scores** indicate cleaner text with fewer extraction errors.
-                        """)
-                
-                with col_m2:
-                    st.write("**Structure Quality:**")
-                    format_pres = metrics.get('format_preservation', 0)
-                    structure = metrics.get('content_structure', 0)
-                    
-                    st.progress(format_pres, text=f"Format Preservation: {format_pres:.1%}")
-                    with st.expander("ℹ️ What is Format Preservation?"):
-                        st.write("""
-                        **Format Preservation** evaluates how well original formatting is maintained:
-                        - **Line Breaks**: Proper preservation of line endings and spacing
-                        - **Paragraph Structure**: Maintained paragraph separation
-                        - **Table Detection**: Recognition and extraction of tabular data
-                        - **List Recognition**: Identification of bullet points and numbered lists
-                        
-                        **Higher scores** indicate better preservation of document structure and layout.
-                        """)
-                    
-                    st.progress(structure, text=f"Content Structure: {structure:.1%}")
-                    with st.expander("ℹ️ What is Content Structure?"):
-                        st.write("""
-                        **Content Structure** measures logical organization and flow:
-                        - **Heading Detection**: Identification of titles and section headers
-                        - **Content Balance**: Reasonable distribution of text across sections
-                        - **Flow Indicators**: Presence of organizational words and transitions
-                        - **Punctuation**: Proper sentence endings and text organization
-                        
-                        **Higher scores** indicate well-organized, logically structured content.
-                        """)
-                
-                # Overall Quality Formula Explanation
-                st.subheader("📊 Quality Formula")
-                with st.expander("🧮 How is Overall Quality Calculated?"):
+                # Information about hierarchy analysis
+                with st.expander("ℹ️ About Hierarchy Analysis"):
                     st.write("""
-                    The **Overall Quality Score** is calculated using a weighted formula:
+                    **Hierarchy Analysis** uses LayoutParser to compare extracted text structure with visual document layout:
                     
-                    ```
-                    Quality = 0.25 × Completeness 
-                            + 0.20 × Semantic Quality
-                            + 0.20 × Noise Reduction
-                            + 0.15 × Format Preservation  
-                            + 0.20 × Content Structure
-                    ```
+                    **What it analyzes:**
+                    - **Headings/Titles**: Compares detected text headings with visual title elements
+                    - **Lists**: Compares extracted lists with visual list structures  
+                    - **Structure Preservation**: How well the parsing maintained document organization
+                    - **Layout Elements**: Detects tables, figures, and other visual components
                     
-                    **Weight Distribution:**
-                    - **Completeness (25%)**: Most important - did we extract all the content?
-                    - **Semantic Quality (20%)**: Is the text meaningful and coherent?
-                    - **Noise Reduction (20%)**: Is the text clean without extraction errors?
-                    - **Content Structure (20%)**: Is the logical organization preserved?
-                    - **Format Preservation (15%)**: Are visual elements maintained?
+                    **Match Score Interpretation:**
+                    - **80-100%**: Excellent hierarchy preservation
+                    - **60-79%**: Good preservation with minor issues
+                    - **40-59%**: Moderate preservation, some structure lost
+                    - **Below 40%**: Poor preservation, significant structure loss
                     
-                    **Result Range:** 0.0 to 1.0 (displayed as percentage)
+                    **Requirements:**
+                    - Only works with PDF files for visual analysis
+                    - Requires LayoutParser and associated dependencies
+                    - Uses deep learning models for layout detection
                     """)
+        
+        # OCR Analysis Tab (if available)
+        if OCR_ANALYSIS_AVAILABLE and tab_ocr is not None:
+            with tab_ocr:
+                st.subheader("👁️ OCR Performance Analysis")
+                st.write("Analyze OCR (Optical Character Recognition) performance and detect image-based content.")
+                
+                if st.button("🔍 Analyze OCR Performance", type="primary"):
+                    with st.spinner("Analyzing OCR performance..."):
+                        try:
+                            # Initialize OCR analyzer
+                            analyzer = OCRAnalyzer()
+                            
+                            # Get file path and extracted text
+                            file_manager = get_file_manager()
+                            selected_file = st.session_state.get('selected_file', '')
+                            
+                            if selected_file:
+                                file_path = file_manager.get_file_path(selected_file)
+                                
+                                # Extract text from parsed data
+                                extracted_text = ""
+                                if 'content' in parsed_data:
+                                    if isinstance(parsed_data['content'], dict):
+                                        extracted_text = parsed_data['content'].get('text', '') or str(parsed_data['content'])
+                                    else:
+                                        extracted_text = str(parsed_data['content'])
+                                elif 'text' in parsed_data:
+                                    extracted_text = parsed_data['text']
+                                else:
+                                    extracted_text = str(parsed_data)
+                                
+                                # Debug information
+                                st.write("**Debug Info:**")
+                                st.write(f"• Selected file: {selected_file}")
+                                st.write(f"• File extension: {file_path.suffix}")
+                                st.write(f"• Available OCR engines: {analyzer.available_engines}")
+                                
+                                if file_path.suffix.lower() == '.pdf' and file_path.exists():
+                                    # Perform OCR analysis
+                                    analysis_result = analyzer.analyze_document_ocr_performance(file_path, extracted_text)
+                                    
+                                    # Display results
+                                    st.success("✅ OCR analysis completed!")
+                                    
+                                    # Overall Assessment
+                                    overall = analysis_result.get('overall_assessment', {})
+                                    col1, col2, col3, col4 = st.columns(4)
+                                    
+                                    with col1:
+                                        doc_type = overall.get('document_type', 'unknown').title()
+                                        st.metric("Document Type", doc_type)
+                                    
+                                    with col2:
+                                        extraction_quality = overall.get('extraction_quality', 'unknown').title()
+                                        st.metric("Extraction Quality", extraction_quality)
+                                    
+                                    with col3:
+                                        ocr_needed = "Yes" if overall.get('ocr_needed', False) else "No"
+                                        st.metric("OCR Needed", ocr_needed)
+                                    
+                                    with col4:
+                                        confidence = overall.get('confidence', 0)
+                                        st.metric("Confidence", f"{confidence:.1f}%")
+                                    
+                                    # Scanned Document Detection
+                                    st.subheader("🔍 Scanned Document Detection")
+                                    scanned_detection = analysis_result.get('scanned_detection', {})
+                                    
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        likely_scanned = scanned_detection.get('likely_scanned', False)
+                                        st.metric("Likely Scanned", "Yes" if likely_scanned else "No")
+                                    
+                                    with col2:
+                                        scan_confidence = scanned_detection.get('confidence', 0)
+                                        st.progress(scan_confidence / 100, text=f"Confidence: {scan_confidence:.1f}%")
+                                    
+                                    # Evidence
+                                    evidence = scanned_detection.get('evidence', [])
+                                    if evidence:
+                                        st.write("**Evidence:**")
+                                        for item in evidence:
+                                            st.write(f"• {item}")
+                                    
+                                    # Native Text Analysis
+                                    st.subheader("📝 Native Text Extraction Analysis")
+                                    native_analysis = analysis_result.get('native_text_analysis', {})
+                                    
+                                    col1, col2 = st.columns(2)
+                                    
+                                    with col1:
+                                        st.write("**PyMuPDF Extraction:**")
+                                        pymupdf_data = native_analysis.get('pymupdf', {})
+                                        if 'error' not in pymupdf_data:
+                                            st.metric("Quality Score", f"{pymupdf_data.get('quality_score', 0):.1f}/100")
+                                            st.metric("Characters", f"{pymupdf_data.get('character_count', 0):,}")
+                                            st.metric("Words", f"{pymupdf_data.get('word_count', 0):,}")
+                                        else:
+                                            st.error(f"Error: {pymupdf_data['error']}")
+                                    
+                                    with col2:
+                                        st.write("**pdfplumber Extraction:**")
+                                        pdfplumber_data = native_analysis.get('pdfplumber', {})
+                                        if 'error' not in pdfplumber_data:
+                                            st.metric("Quality Score", f"{pdfplumber_data.get('quality_score', 0):.1f}/100")
+                                            st.metric("Characters", f"{pdfplumber_data.get('character_count', 0):,}")
+                                            st.metric("Words", f"{pdfplumber_data.get('word_count', 0):,}")
+                                        else:
+                                            st.error(f"Error: {pdfplumber_data['error']}")
+                                    
+                                    # Image Analysis
+                                    st.subheader("🖼️ Image Content Analysis")
+                                    image_analysis = analysis_result.get('image_analysis', {})
+                                    
+                                    col1, col2, col3, col4 = st.columns(4)
+                                    with col1:
+                                        st.metric("Total Images", image_analysis.get('total_images', 0))
+                                    with col2:
+                                        st.metric("Large Images", image_analysis.get('large_images', 0))
+                                    with col3:
+                                        total_area = image_analysis.get('total_image_area', 0)
+                                        st.metric("Total Image Area", f"{total_area:,} px²")
+                                    with col4:
+                                        images_by_page = image_analysis.get('images_by_page', {})
+                                        avg_per_page = len(images_by_page) / max(len(images_by_page), 1) if images_by_page else 0
+                                        st.metric("Avg per Page", f"{avg_per_page:.1f}")
+                                    
+                                    # Images by Page
+                                    if images_by_page:
+                                        st.write("**Images by Page:**")
+                                        for page, count in sorted(images_by_page.items()):
+                                            st.write(f"• Page {page}: {count} images")
+                                    
+                                    # OCR Engine Comparison
+                                    ocr_comparison = analysis_result.get('ocr_comparison', {})
+                                    if ocr_comparison.get('sample_results'):
+                                        st.subheader("⚖️ OCR Engine Comparison")
+                                        
+                                        engines_tested = ocr_comparison.get('engines_tested', [])
+                                        st.write(f"**Engines tested:** {', '.join(engines_tested)}")
+                                        
+                                        sample_results = ocr_comparison['sample_results']
+                                        
+                                        for i, sample in enumerate(sample_results):
+                                            with st.expander(f"📷 Sample Image {i+1} (Page {sample['page']}, Size: {sample['image_size']})", expanded=i==0):
+                                                results = sample.get('results', {})
+                                                
+                                                # Show results for each engine
+                                                for engine, result in results.items():
+                                                    if engine == 'comparison':
+                                                        continue
+                                                    
+                                                    if 'error' not in result:
+                                                        col1, col2, col3, col4 = st.columns(4)
+                                                        with col1:
+                                                            st.write(f"**{engine.title()}:**")
+                                                        with col2:
+                                                            st.write(f"Confidence: {result.get('avg_confidence', 0):.1f}%")
+                                                        with col3:
+                                                            st.write(f"Characters: {result.get('character_count', 0)}")
+                                                        with col4:
+                                                            st.write(f"Time: {result.get('processing_time', 0):.2f}s")
+                                                        
+                                                        # Show extracted text preview
+                                                        text = result.get('text', '')
+                                                        if text:
+                                                            st.text_area(f"{engine} extracted text", text[:200] + "..." if len(text) > 200 else text, height=100, key=f"{engine}_{i}")
+                                                    else:
+                                                        st.error(f"**{engine.title()}:** {result['error']}")
+                                                
+                                                # Show comparison
+                                                comparison = results.get('comparison', {})
+                                                if comparison:
+                                                    st.write("**Comparison Results:**")
+                                                    if comparison.get('highest_confidence'):
+                                                        st.write(f"• Highest confidence: {comparison['highest_confidence']}")
+                                                    if comparison.get('fastest'):
+                                                        st.write(f"• Fastest: {comparison['fastest']}")
+                                                    if comparison.get('most_text'):
+                                                        st.write(f"• Most text extracted: {comparison['most_text']}")
+                                    
+                                    # Recommendations
+                                    recommendations = analysis_result.get('recommendations', [])
+                                    if recommendations:
+                                        st.subheader("💡 OCR Recommendations")
+                                        with st.expander("📋 View Detailed OCR Recommendations", expanded=True):
+                                            for i, rec in enumerate(recommendations, 1):
+                                                st.write(f"**{i}.** {rec}")
+                                            
+                                            # Add OCR improvement tips
+                                            st.write("---")
+                                            st.write("**OCR Improvement Tips:**")
+                                            st.write("- **For scanned documents**: Use image preprocessing (contrast, brightness adjustment)")
+                                            st.write("- **For low quality images**: Try multiple OCR engines and compare results")
+                                            st.write("- **For tables in images**: Consider table-specific OCR tools")
+                                            st.write("- **For non-English text**: Configure OCR language settings")
+                                            st.write("- **For handwritten text**: Use specialized handwriting recognition models")
+                                    
+                                    # Download analysis results
+                                    try:
+                                        import json
+                                        # Remove image data for JSON export (too large)
+                                        export_result = analysis_result.copy()
+                                        if 'image_analysis' in export_result:
+                                            export_result.pop('image_analysis', None)
+                                        
+                                        analysis_json = json.dumps(export_result, indent=2, default=str)
+                                        st.download_button(
+                                            "💾 Download OCR Analysis (JSON)",
+                                            data=analysis_json,
+                                            file_name=f"{st.session_state.selected_file}_ocr_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                                            mime="application/json"
+                                        )
+                                    except Exception as e:
+                                        st.error(f"❌ Failed to generate analysis report: {str(e)}")
+                                
+                                elif file_path.suffix.lower() != '.pdf':
+                                    st.warning("⚠️ OCR analysis is currently only supported for PDF files")
+                                else:
+                                    st.error("❌ File not found or not accessible")
+                            
+                            else:
+                                st.error("❌ No file selected. Please parse a document first.")
+                        
+                        except Exception as e:
+                            st.error(f"❌ OCR analysis failed: {str(e)}")
+                            st.write("This might be due to missing dependencies. Try installing:")
+                            st.code("pip install -r requirements_ocr.txt")
+                
+                # Information about OCR analysis
+                with st.expander("ℹ️ About OCR Analysis"):
+                    st.write("""
+                    **OCR Analysis** evaluates text extraction quality and recommends optimal OCR strategies:
                     
-                    # Show current calculation
-                    if metrics:
-                        calc_text = f"""
-                        **Current Calculation:**
-                        - 0.25 × {completeness:.3f} = {0.25 * completeness:.3f}
-                        - 0.20 × {semantic:.3f} = {0.20 * semantic:.3f}
-                        - 0.20 × {(1-noise):.3f} = {0.20 * (1-noise):.3f}
-                        - 0.15 × {format_pres:.3f} = {0.15 * format_pres:.3f}
-                        - 0.20 × {structure:.3f} = {0.20 * structure:.3f}
-                        
-                        **Total: {overall_quality:.3f} ({overall_quality:.1%})**
-                        """
-                        st.code(calc_text)
-                
-                # Text Statistics
-                st.subheader("📈 Content Statistics")
-                text_stats = quality_data.get('text_stats', {})
-                
-                col_s1, col_s2, col_s3, col_s4 = st.columns(4)
-                
-                with col_s1:
-                    st.metric("Characters", f"{text_stats.get('character_count', 0):,}")
-                with col_s2:
-                    st.metric("Words", f"{text_stats.get('word_count', 0):,}")
-                with col_s3:
-                    st.metric("Lines", f"{text_stats.get('line_count', 0):,}")
-                with col_s4:
-                    st.metric("Paragraphs", f"{text_stats.get('paragraph_count', 0):,}")
-                
-                # Recommendations
-                recommendations = quality_data.get('recommendations', [])
-                if recommendations:
-                    st.subheader("💡 Recommendations")
-                    with st.expander("📋 View Detailed Recommendations", expanded=True):
-                        st.write("Based on the quality analysis, here are actionable suggestions:")
-                        for i, rec in enumerate(recommendations, 1):
-                            st.write(f"**{i}.** {rec}")
-                        
-                        # Add general guidance
-                        st.write("---")
-                        st.write("**General Parser Guidance:**")
-                        st.write("- **PyPDF**: Fast but basic - good for simple text extraction")
-                        st.write("- **PyMuPDF**: Balanced performance - handles most documents well")  
-                        st.write("- **pdfplumber**: Excellent for tables and detailed formatting")
-                        st.write("- **LlamaParse**: AI-powered - best for complex layouts and multi-format documents")
-                        st.write("- **PDFMiner**: Low-level control - good for specific extraction needs")
-                        st.write("- **tabula**: Specialized for table extraction from PDFs")
-                        st.write("- **PDFQuery**: jQuery-like queries - good for structured data extraction")
-                
-                # Quality Assessment Download
-                try:
-                    import json
-                    quality_json = json.dumps(quality_data, indent=2, default=str)
-                    st.download_button(
-                        "💾 Download Quality Report (JSON)",
-                        data=quality_json,
-                        file_name=f"{st.session_state.selected_file}_{st.session_state.selected_parser}_quality_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                        mime="application/json"
-                    )
-                except Exception as e:
-                    st.error(f"❌ Failed to generate quality report: {str(e)}")
+                    **What it analyzes:**
+                    - **Scanned Document Detection**: Identifies if document contains scanned images
+                    - **Native Text Quality**: Evaluates built-in text extraction quality
+                    - **Image Content**: Finds and analyzes embedded images
+                    - **OCR Engine Comparison**: Tests multiple OCR engines (Tesseract, EasyOCR, PaddleOCR)
+                    - **Performance Metrics**: Speed, accuracy, and confidence scores
+                    
+                    **Document Types:**
+                    - **Digital**: Created digitally, good native text extraction
+                    - **Mixed**: Combination of digital text and scanned images
+                    - **Scanned**: Entirely scanned, requires OCR for text extraction
+                    
+                    **OCR Engines Tested:**
+                    - **Tesseract**: Open-source, fast, good for clean text
+                    - **EasyOCR**: Deep learning-based, good for various fonts
+                    - **PaddleOCR**: Advanced neural network, excellent accuracy
+                    
+                    **When to Use OCR:**
+                    - Poor native text extraction quality
+                    - Document appears to be scanned
+                    - Images contain readable text
+                    - Handwritten content needs extraction
+                    
+                    **Requirements:**
+                    - Only works with PDF files
+                    - Requires OCR engines (install with requirements_ocr.txt)
+                    - May need system-level Tesseract installation
+                    """)
+
     
     # Footer
     st.markdown("---")

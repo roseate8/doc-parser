@@ -1,0 +1,7 @@
+# Additional requirements for hierarchy analysis
+layoutparser[layoutmodels,tesseract,opencv]
+pdf2image
+opencv-python
+detectron2 @ git+https://github.com/facebookresearch/detectron2.git
+Pillow
+poppler-utils

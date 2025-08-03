@@ -1,0 +1,12 @@
+# OCR Analysis Dependencies
+pytesseract>=0.3.10
+easyocr>=1.6.0
+paddleocr>=2.6.0
+opencv-python>=4.5.0
+Pillow>=9.0.0
+numpy>=1.21.0
+
+# System Requirements (install separately):
+# Windows: Download Tesseract from https://github.com/UB-Mannheim/tesseract/wiki
+# Linux: sudo apt-get install tesseract-ocr
+# macOS: brew install tesseract
