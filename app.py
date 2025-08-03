@@ -248,7 +248,7 @@ def main():
         st.header("📊 Parsing Results")
         
         # Tabs for different views
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📄 HTML", "📝 Markdown", "📋 JSON", "🗂️ XML", "ℹ️ Metadata"])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📄 HTML", "📝 Markdown", "📋 JSON", "🗂️ XML", "ℹ️ Metadata", "📊 Quality"])
         
         parsed_data = st.session_state.parsed_data
         
@@ -363,6 +363,99 @@ def main():
                     height=200,
                     disabled=True
                 )
+        
+        with tab6:
+            st.subheader("📊 Quality Assessment")
+            quality_data = parsed_data.get('quality_assessment', {})
+            
+            if 'error' in quality_data:
+                st.error(f"❌ Quality assessment failed: {quality_data['error']}")
+            else:
+                # Overall Quality Score
+                col_q1, col_q2, col_q3 = st.columns(3)
+                
+                with col_q1:
+                    overall_quality = quality_data.get('overall_quality', 0)
+                    st.metric(
+                        "Overall Quality", 
+                        f"{overall_quality:.1%}",
+                        help="Composite quality score based on multiple factors"
+                    )
+                
+                with col_q2:
+                    confidence = quality_data.get('confidence_level', 'Unknown')
+                    st.metric(
+                        "Confidence Level", 
+                        confidence,
+                        help="How confident we are in the parsing results"
+                    )
+                
+                with col_q3:
+                    grade = quality_data.get('quality_grade', 'N/A')
+                    st.metric(
+                        "Quality Grade", 
+                        grade,
+                        help="Letter grade representation of quality"
+                    )
+                
+                # Quality Metrics Breakdown
+                st.subheader("🔍 Detailed Metrics")
+                metrics = quality_data.get('metrics', {})
+                
+                col_m1, col_m2 = st.columns(2)
+                
+                with col_m1:
+                    st.write("**Content Quality:**")
+                    completeness = metrics.get('completeness_score', 0)
+                    semantic = metrics.get('semantic_quality', 0)
+                    noise = metrics.get('noise_level', 0)
+                    
+                    st.progress(completeness, text=f"Completeness: {completeness:.1%}")
+                    st.progress(semantic, text=f"Semantic Quality: {semantic:.1%}")
+                    st.progress(1-noise, text=f"Noise Reduction: {(1-noise):.1%}")
+                
+                with col_m2:
+                    st.write("**Structure Quality:**")
+                    format_pres = metrics.get('format_preservation', 0)
+                    structure = metrics.get('content_structure', 0)
+                    
+                    st.progress(format_pres, text=f"Format Preservation: {format_pres:.1%}")
+                    st.progress(structure, text=f"Content Structure: {structure:.1%}")
+                
+                # Text Statistics
+                st.subheader("📈 Content Statistics")
+                text_stats = quality_data.get('text_stats', {})
+                
+                col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+                
+                with col_s1:
+                    st.metric("Characters", f"{text_stats.get('character_count', 0):,}")
+                with col_s2:
+                    st.metric("Words", f"{text_stats.get('word_count', 0):,}")
+                with col_s3:
+                    st.metric("Lines", f"{text_stats.get('line_count', 0):,}")
+                with col_s4:
+                    st.metric("Paragraphs", f"{text_stats.get('paragraph_count', 0):,}")
+                
+                # Recommendations
+                recommendations = quality_data.get('recommendations', [])
+                if recommendations:
+                    st.subheader("💡 Recommendations")
+                    for i, rec in enumerate(recommendations, 1):
+                        st.write(f"{i}. {rec}")
+                
+                # Quality Assessment Download
+                try:
+                    import json
+                    quality_json = json.dumps(quality_data, indent=2, default=str)
+                    st.download_button(
+                        "💾 Download Quality Report (JSON)",
+                        data=quality_json,
+                        file_name=f"{st.session_state.selected_file}_{st.session_state.selected_parser}_quality_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                        mime="application/json"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Failed to generate quality report: {str(e)}")
     
     # Footer
     st.markdown("---")

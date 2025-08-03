@@ -12,6 +12,10 @@ from .pdfminer_parser import PDFMinerParser
 from .tabula_parser import TabulaParser
 from .pdfquery_parser import PDFQueryParser
 from .llamaparse_parser import LlamaParseParser
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from quality_assessment import QualityAssessment
 
 
 class ParserManager:
@@ -27,6 +31,7 @@ class ParserManager:
             'PDFQuery': PDFQueryParser(),
             'LlamaParse': LlamaParseParser(llamaparse_api_key)
         }
+        self.quality_assessor = QualityAssessment()
     
     def get_available_parsers(self) -> List[str]:
         """Get list of available parser names."""
@@ -76,7 +81,22 @@ class ParserManager:
                 'raw_data': None
             }
         
-        return parser.parse(file_path)
+        # Parse the document
+        parsed_result = parser.parse(file_path)
+        
+        # Add quality assessment
+        try:
+            quality_assessment = self.quality_assessor.assess_quality(parsed_result, file_path)
+            parsed_result['quality_assessment'] = quality_assessment
+        except Exception as e:
+            # If quality assessment fails, add a basic error indicator
+            parsed_result['quality_assessment'] = {
+                'error': f"Quality assessment failed: {str(e)}",
+                'overall_quality': 0.0,
+                'confidence_level': 'Unknown'
+            }
+        
+        return parsed_result
     
     def get_parser_info(self) -> Dict[str, Dict[str, Any]]:
         """Get information about all available parsers."""
